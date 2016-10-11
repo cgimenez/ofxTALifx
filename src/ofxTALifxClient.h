@@ -5,7 +5,8 @@
 #include "Poco/NumberFormatter.h"
 #include "protocol.h"
 
-#define BROADCAST_ADDRESS "192.168.1.255"
+#define LIFX_BROADCAST_ADDRESS "192.168.1.255"
+#define LIFX_PORT 56700
 #define DISCOVER_DELAY 5000
 
 typedef uint8_t target_type[8];
@@ -13,9 +14,13 @@ typedef uint8_t target_type[8];
 class ofxTALifxBulb {
   public:
     string label;
+    string group_label;
     target_type target;
+    string ip_address;
     uint64_t last_seen_at = 0;
     bool online = true;
+    bool label_received = false;
+    bool group_received = false;
 
     static string target_to_hex(uint8_t t[]) {
         string s;
@@ -46,13 +51,21 @@ typedef std::unordered_map<uint64_t, ofxTALifxBulb> bulb_map;
 class ofxTALifxClient {
   private:
     ofxUDPManager udpCnx;
+    uint32_t source_id;
     uint64_t last_discovered;
+    uint64_t last_bulbs_dump = 0;
     bulb_map bulbs;
     string target_to_hex(uint8_t t[]);
     enum statuses { idle, init, get_labels };
     int status;
 
-    void refresh_online();
+    void dump_bulbs();
+    void check_online();
+    void getLabel(target_type& target);
+    void getGroup(target_type& target);
+    bool find_bulb(string label, ofxTALifxBulb& _bulb);
+    bool set_target(string starget, target_type& target);
+    void send(lifx::NetworkHeader& header);
 
   public:
     ofxTALifxClient();
@@ -63,7 +76,7 @@ class ofxTALifxClient {
         header.tagged = tagged;
         header.addressable = true;
         header.protocol = 1024;
-        header.source = 20; // A générer
+        header.source = source_id;
 
         memcpy(header.target, target, sizeof(lifx::NetworkHeader::target));
         memset(header.site, 0, sizeof(lifx::NetworkHeader::site));
@@ -75,17 +88,16 @@ class ofxTALifxClient {
         unsigned long payload_size = sizeof(T) == 1 ? 0 : sizeof(T);
         header.size = sizeof(lifx::NetworkHeader) - sizeof(lifx::NetworkHeader::payload) + payload_size;
         if (payload_size > 0)
-            memcpy(header.payload, ((uint8_t*)(&message)), payload_size);
+            memcpy(header.payload, &message, payload_size);
     }
 
     void connect();
     void discover();
     void update();
-    void getLabel(target_type& target);
-    void getGroup(target_type& target);
-    void getLabels();
-
-    void color(float H, float S, float B, int K, int T);
+    void color(string target, float H, float S, float B, uint16_t T = 0);
+    void power_off(string target);
+    void power_on(string target);
+    void test();
 };
 
 #endif // OFXTALIFXCLIENT_H

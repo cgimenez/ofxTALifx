@@ -1,7 +1,7 @@
 import qbs
+import "../../libs/openFrameworksCompiled/project/qtcreator/ofApp.qbs" as ofApp
 
 CppApplication {
-    consoleApplication: true
     files: [
         "src/ofxTALifxClient.cpp",
         "src/ofxTALifxClient.h",

@@ -28,7 +28,7 @@ typedef struct {
     uint64_t  at_time;
     uint16_t  type;
     uint16_t  :16;
-    uint8_t   payload[2048];
+    uint8_t   payload[4096];
 } Header;
 
 typedef Header NetworkHeader;
