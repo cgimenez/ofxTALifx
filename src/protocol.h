@@ -12,16 +12,16 @@ namespace lifx {
 typedef struct {
     // Frame - 64
     uint16_t  size;
-    uint16_t  protocol : 12;
-    uint8_t   addressable : 1;
-    uint8_t   tagged : 1;
-    uint8_t   origin : 2;
+    uint16_t  protocol: 12;
+    uint8_t   addressable: 1;
+    uint8_t   tagged: 1;
+    uint8_t   origin: 2;
     uint32_t  source;
     // Frame Address - 128
     uint8_t   target[8];
     uint8_t   site[6];
-    uint8_t   ack_required : 1;
-    uint8_t   res_required : 1;
+    uint8_t   ack_required: 1;
+    uint8_t   res_required: 1;
     uint8_t   :6;
     uint8_t   sequence;
     // Protocol Header - 96
