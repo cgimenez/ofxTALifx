@@ -1,3 +1,5 @@
+// (C) 2016/2017 Christophe Gimenez for TACTIF Compagnie / Bordeaux - France (tactif.com)
+
 #include "ofxTALifxUdpManager.h"
 #include "ofxTALifxBulb.h"
 
