@@ -8,37 +8,41 @@
 #include "protocol.h"
 #include "ofxTALifxUdpManager.h"
 
+namespace ofxtalifx {
+
 class ofxTALifxBulb {
+  private:
+    ofxTALifxUdpManager& udp_man;
+
   public:
     string      label;
     string      group_label;
-    string      group_name; // app side use
     target_t    target;
     uint64_t    target64;
     string      ip_address;
 
-    ofxTALifxUdpManager& udpMan;
-
-    uint64_t last_seen_at = 0;
-    bool online = true;
-    bool label_received = false;
-    bool group_received = false;
+    uint64_t    last_seen_at = 0;
+    bool        online = true;
+    bool        label_received = false;
+    bool        group_received = false;
 
     ofxTALifxBulb(ofxTALifxUdpManager& _udpMan);
 
-    static string target_to_hex(uint8_t t[]);
-    static void target_from_u64(target_t* t1, uint64_t* t2);
-    static uint64_t target_to_64(target_t t);
+    const string toString();
 
-    void setManager(ofxTALifxUdpManager& _udpMan);
+    static string targetToHex(const uint8_t t[]);
+    static void targetFrom64(target_t* t1, const uint64_t* t2);
+    static uint64_t targetTo64(const target_t t);
 
     void GetLabel();
     void StateLabel(lifx::NetworkHeader& header);
     void GetGroup();
     void StateGroup(lifx::NetworkHeader& header);
-    void SetColor(float H, float S, float B, uint16_t T = 0);
-    void SetWhite(float B, uint16_t K, uint16_t T = 0);
-    void SetPower(uint16_t level);
+    void SetColor(const float H, const float S, const float B, const uint16_t T = 0);
+    void SetWhite(uint16_t K, const float B = 1.0, const uint16_t T = 0);
+    void SetPower(const uint16_t level);
 };
+
+}
 
 #endif // OFXTALIFXBULB_H

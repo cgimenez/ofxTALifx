@@ -20,8 +20,8 @@ typedef struct {
     // Frame Address - 128
     uint8_t   target[8];
     uint8_t   site[6];
-    uint8_t   ack_required: 1;
     uint8_t   res_required: 1;
+    uint8_t   ack_required: 1;
     uint8_t   :6;
     uint8_t   sequence;
     // Protocol Header - 96

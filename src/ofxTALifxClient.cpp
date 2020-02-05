@@ -1,11 +1,32 @@
+#include "ofxTALifxClient.h"
 #include "ofMain.h"
 #include "ofxTALifxBulb.h"
-#include "ofxTALifxClient.h"
+
+using namespace ofxtalifx;
 
 ofxTALifxClient::ofxTALifxClient() {
     last_discovered = 0;
     bulbs.clear();
-    udpMan.connect();
+    udp_man.setup();
+    disableAck();
+}
+
+ofxTALifxClient::~ofxTALifxClient() {
+    ofLogVerbose() << "ofxTALifxClient dtor";
+}
+
+/*
+ * Find a bulb given its label
+ * Return a bulb iterator, instead of the bulb itself as we can't return references
+ *
+ */
+bulb_map_iterator ofxTALifxClient::findBulb(const string label) {
+    for (bulb_map_iterator it = bulbs.begin(); it != bulbs.end(); it++) {
+        if (it->second.label == label) {
+            return it;
+        }
+    }
+    return bulbs.end();
 }
 
 /*
@@ -15,34 +36,57 @@ ofxTALifxClient::ofxTALifxClient() {
  * XX bulb named XX
  *
  */
-bulb_vector ofxTALifxClient::targeted_bulbs(string target) {
+const bulb_vector ofxTALifxClient::targetedBulbs(const string target) {
     bulb_vector v;
+
     if (target == "*") {
-        for (auto& bulb: bulbs) {
-            v.push_back(bulb.second);
+        for (auto &bulb : bulbs) {
+            v.push_back(&bulb.second);
         }
     } else if (target[0] == '#') {
         string group_name = target.substr(1, target.size() - 1);
-        for (auto& bulb: bulbs) {
-            if (bulb.second.group_name == group_name) {
-                v.push_back(bulb.second);
-            }
-        }
+        v = groups[group_name];
     } else {
-        v.push_back(find_bulb(target)->second);
+        if (findBulb(target) != bulbs.end()) {
+            v.push_back(&(findBulb(target)->second));
+        }
     }
     return v;
 }
 
+const group_map ofxTALifxClient::getGroups() {
+    return groups;
+}
+
+bulb_map ofxTALifxClient::getBulbs() {
+    return bulbs;
+}
+
 /*
- * Add bulbs to a group
+ * Overwrite group with bulbs
  *
  */
-void ofxTALifxClient::Group(string groupName, vector<string> bulbs_labels) {
-    for (auto label: bulbs_labels) {
-        bulb_map_iterator it = find_bulb(label);
+void ofxTALifxClient::setGroup(const string groupName, const vector<string> bulbs_labels) {
+    bulb_vector v;
+    for (auto &label : bulbs_labels) {
+        bulb_map_iterator it = findBulb(label);
         if (it != bulbs.end()) {
-            it->second.group_name = groupName;
+            v.push_back(&(it->second));
+        }
+    }
+    groups[groupName] = v;
+}
+
+/*
+ * Add bulb to group
+ *
+ */
+void ofxTALifxClient::addToGroup(const string groupName, const string label) {
+    group_map_iterator git = groups.find(groupName);
+    if (git != groups.end()) {
+        bulb_map_iterator it = findBulb(label);
+        if (it != bulbs.end()) {
+            git->second.push_back(&(it->second));
         }
     }
 }
@@ -51,89 +95,117 @@ void ofxTALifxClient::Group(string groupName, vector<string> bulbs_labels) {
  * Remove bulb from group
  *
  */
-void ofxTALifxClient::unGroup(string groupName) {
-    for (auto bulb: bulbs) {
-        if(bulb.second.group_name == groupName)
-            bulb.second.group_name = "";
+void ofxTALifxClient::removeFromGroup(const string groupName, const string label) {
+    group_map_iterator git;
+    if (git != groups.end()) {
     }
 }
 
-void ofxTALifxClient::unGroupAll() {
-    for (auto& bulb: bulbs) {
-        bulb.second.group_name = "";
+/*
+ * Delete group
+ *
+ */
+void ofxTALifxClient::removeGroup(const string groupName) {
+    group_map_iterator it = groups.find(groupName);
+    if (it != groups.end()) {
+        groups.erase(it);
     }
 }
 
-void ofxTALifxClient::discover() {
+/*
+ * Delete all groups
+ *
+ */
+void ofxTALifxClient::removeAllGroups() {
+    groups.clear();
+}
+
+/*
+ * Discover bulbs on network
+ *
+ */
+
+void ofxTALifxClient::Discover() {
     lifx::message::device::GetService message;
     lifx::NetworkHeader header;
 
-    udpMan.buildHeader(header, true, message);
-    udpMan.sendBroadcast(header);
+    udp_man.buildHeader(header, true, message);
+    udp_man.sendBroadcast(header);
     last_discovered = ofGetElapsedTimeMillis();
-    ofLog(OF_LOG_VERBOSE) << "DISCOVER : GET_SERVICE broadcast sent";
+    DLOG("DISCOVER : GET_SERVICE broadcast sent");
 }
 
-bulb_map_iterator ofxTALifxClient::find_bulb(string label) {
-    for (bulb_map_iterator it = bulbs.begin(); it != bulbs.end(); it++) {
-        if (it->second.label == label) {
-            return it;
+/*
+ * Set the online flag of bulbs
+ *
+ */
+void ofxTALifxClient::checkOnline() {
+    for (auto &bulb : bulbs) {
+        if (ofGetElapsedTimeMillis() - bulb.second.last_seen_at > OFFLINE_DELAY) {
+            bulb.second.online = false;
         }
     }
-    return bulbs.end();
 }
 
-void ofxTALifxClient::check_online() {
-    /*for (int i=0; i<bulbs.size(); i++) {
-        if (ofGetElapsedTimeMillis() - bulbs[i].last_seen_at > 5000) {
-            bulbs[i].online = false;
-        }
-    }
-    */
-}
+/*
+ * Weird dump of discovered bulbs
+ *
+ */
+void ofxTALifxClient::dumpBulbs() {
+    string s;
 
-void ofxTALifxClient::dump_bulbs() {
-    string s = ofToString(bulbs.size()) + " bulbs found - BULBS : ";
-    for (auto& bulb: bulbs) {
-        s += "[" + bulb.second.label + "#" + ofxTALifxBulb::target_to_hex(bulb.second.target) + "#" + bulb.second.ip_address + "#" + bulb.second.group_name + "] ";
+    DLOG(ofToString(bulbs.size()) << " bulbs found");
+    for (auto &bulb : bulbs) {
+        s += "[" + bulb.second.label + "#" + ofxTALifxBulb::targetToHex(bulb.second.target) + "#" + bulb.second.ip_address + "] ";
     }
     if (bulbs.size() > 0)
-        ofLog() << s;
+        DLOG(s);
     last_bulbs_dump = ofGetElapsedTimeMillis();
 }
 
+/*
+ * Heartbeat
+ *
+ */
 void ofxTALifxClient::threadedFunction() {
     uint64_t target;
     lifx::NetworkHeader header;
 
     while (isThreadRunning()) {
-        if (udpMan.has_pending_data()) {
-            udpMan.receive(header);
-            target = ofxTALifxBulb::target_to_64(header.target);
+        sleep(5);
+        lock();
+        if (udp_man.has_pending_data()) {
+            udp_man.receive(header);
+            target = ofxTALifxBulb::targetTo64(header.target);
             if (target != 0x0000000000000000) { // No loopback
-                this->sleep(5);
-                lock();
+                /*
+                 * Problème ci dessous : si une lampe n'est pas correctement détecté la première fois (mauvais label, mauvaise IP)
+                 * un nouveau discover ne prend pas en compte les nouvelles valeurs
+                 *
+                 */
                 auto it = bulbs.find(target);
                 if (it == bulbs.end()) {
-                    ofxTALifxBulb new_bulb(udpMan);
+                    ofxTALifxBulb new_bulb(udp_man);
                     std::memcpy(new_bulb.target, header.target, sizeof(header.target));
-                    new_bulb.setManager(udpMan);
-                    new_bulb.ip_address = udpMan.getIpAddress();
+                    new_bulb.ip_address = udp_man.getIpAddress();
                     new_bulb.target64 = target;
                     bulbs.insert(pair<uint64_t, ofxTALifxBulb>(target, new_bulb));
+                } else {
+                    // it->second.ip_address = udp_man.getIpAddress();
                 }
-                ofxTALifxBulb& bulb = bulbs.find(target)->second;
+
+                ofxTALifxBulb &bulb = bulbs.find(target)->second;
                 bulb.last_seen_at = ofGetElapsedTimeMillis();
                 bulb.online = true;
+                bulb.ip_address = udp_man.getIpAddress();
                 // ofLog(OF_LOG_VERBOSE) << ofxTALifxBulb::target_to_hex(bulb.target) << " " << ofToHex(target) << " " << header.type;
                 switch (header.type) {
                     case lifx::message::device::StateService::type: // STATE_SERVICE
                         lifx::message::device::StateService message;
-                        memcpy((char*)&message, (char*)&header.payload[0], sizeof(message));
-                        ofLog(OF_LOG_VERBOSE) << "STATE_SERVICE rcv for target " << ofxTALifxBulb::target_to_hex(bulb.target) << " " << message.port;
+                        memcpy(reinterpret_cast<char *>(&message), reinterpret_cast<char *>(&header.payload[0]), sizeof(message));
+                        DLOG("STATE_SERVICE rcv for target " << ofxTALifxBulb::target_to_hex(bulb.target) << " " << message.port);
                         if (!bulb.label_received) {
                             bulb.GetLabel();
-
                         }
                         if (!bulb.group_received) {
                             bulb.GetGroup();
@@ -141,109 +213,137 @@ void ofxTALifxClient::threadedFunction() {
                         break;
 
                     case lifx::message::device::StateLabel::type: // STATE_LABEL
-                        ofLog(OF_LOG_VERBOSE) << "STATE_LABEL rcv for target " << ofxTALifxBulb::target_to_hex(bulb.target);
+                        DLOG("STATE_LABEL rcv for target " << ofxTALifxBulb::target_to_hex(bulb.target));
                         bulb.StateLabel(header);
                         break;
 
                     case lifx::message::device::StateGroup::type: // STATE_GROUP
-                        ofLog(OF_LOG_VERBOSE) << "STATE_GROUP rcv for target " << ofxTALifxBulb::target_to_hex(bulb.target);
+                        DLOG("STATE_GROUP rcv for target " << ofxTALifxBulb::target_to_hex(bulb.target));
                         bulb.StateGroup(header);
-
-                    case lifx::message::device::Acknowledgement::type:  // ACKNOWLEDGMENT
-                        ofLog() << "ACK rcv SEQ = " << int(header.sequence) << " " << ofxTALifxBulb::target_to_hex(bulb.target);
-                        udpMan.ackReceived(header.sequence);
                         break;
+
+                    case lifx::message::device::Acknowledgement::type: // ACKNOWLEDGMENT
+                        DLOG("ACK rcv SEQ = " << int(header.sequence) << " " << ofxTALifxBulb::target_to_hex(bulb.target));
+                        udp_man.ackReceived(header.sequence);
+                        break;
+
                     default:
-                        ofLog() << "Unhandled header.type message " << header.type;
+                        DLOG("Unhandled header.type message " << header.type);
                         break;
                 }
                 //}
             } // Target 0
         }
+        udp_man.ackCheck();
         if (ofGetElapsedTimeMillis() - last_bulbs_dump > DUMP_DELAY)
-            dump_bulbs();
+            dumpBulbs();
         if (ofGetElapsedTimeMillis() - last_discovered > DISCOVER_DELAY || last_discovered == 0) {
-            discover();
+            Discover();
         }
+        checkOnline();
         unlock();
-        //refresh_online();
     }
 }
 
-void ofxTALifxClient::nextColor(string target, float H, float S, float B) {
-    color_states[target] = {H,S,B};
+// ================================================================================
+// API
+// ================================================================================
+
+void ofxTALifxClient::nextColor(const string target, const float H, const float S, const float B) {
+    color_states[target] = {H, S, B};
 }
 
-void ofxTALifxClient::Color(string target, float H, float S, float B, uint16_t T) {
+/*
+ * Change bulb color, color is also saved for later usage by Off() On()
+ *
+ */
+
+void ofxTALifxClient::Color(const string target, const float H, const float S, const float B, const uint16_t T) {
     lock();
-    color_states[target] = {H,S,B};
-    color(targeted_bulbs(target),H,S,B,T);
+    color_states[target] = {H, S, B};
+    Color(targetedBulbs(target), H, S, B, T);
     unlock();
 }
 
-void ofxTALifxClient::color(bulb_vector bulbs, float H, float S, float B, uint16_t T) {
-    for (auto& b : bulbs) {
-        b.SetColor(H,S,B,T);
+void ofxTALifxClient::Color(const bulb_vector bulbs, const float H, const float S, const float B, const uint16_t T) {
+    for (auto &b : bulbs) {
+        b->SetColor(H, S, B, T);
     }
 }
 
-void ofxTALifxClient::Off(string target) {
+/*
+ * Change bulb's white level
+ */
+
+void ofxTALifxClient::White(const string target, const uint16_t K, const float B, const uint16_t T) {
     lock();
-    off(targeted_bulbs(target));
+    White(targetedBulbs(target), K, B, T);
     unlock();
 }
 
-void ofxTALifxClient::off(bulb_vector bulbs) {
-    for (auto& b : bulbs) {
-        b.SetPower(0);
+void ofxTALifxClient::White(const bulb_vector bulbs, const uint16_t K, const float B, const uint16_t T) {
+    for (auto &b : bulbs) {
+        b->SetWhite(K, B, T);
     }
 }
 
-void ofxTALifxClient::On(string target) {
+/*
+ * Set bulbs to black
+ */
+
+void ofxTALifxClient::Off(const string target) {
     lock();
-    on(targeted_bulbs(target));
+    Off(targetedBulbs(target));
     unlock();
 }
 
-void ofxTALifxClient::on(bulb_vector bulbs) {
-    for (auto& b : bulbs) {
-        b.SetPower(65535);
+void ofxTALifxClient::Off(const bulb_vector bulbs) {
+    for (auto &b : bulbs) {
+        b->SetColor(0, 0, 0);
     }
 }
 
-void ofxTALifxClient::White(string target, uint16_t K, float B, uint16_t T) {
-    lock();
-    white(targeted_bulbs(target),B,K,T);
-    unlock();
-}
+/*
+ * Restore color state
+ */
 
-void ofxTALifxClient::white(bulb_vector bulbs, uint16_t K, float B, uint16_t T) {
-    for (auto& b : bulbs) {
-        b.SetWhite(K,B,T);
-    }
-}
-
-void ofxTALifxClient::Boff(string target) {
-    lock();
-    boff(targeted_bulbs(target));
-    unlock();
-}
-
-void ofxTALifxClient::boff(bulb_vector bulbs) {
-    for (auto& b : bulbs) {
-        b.SetColor(0,0,0);
-    }
-}
-
-void ofxTALifxClient::Bon(string target) {
+void ofxTALifxClient::On(const string target) {
     lock();
     color_state state = color_states[target];
-    bon(targeted_bulbs(target), state.H, state.S, state.B);
+    On(targetedBulbs(target), state.H, state.S, state.B);
     unlock();
 }
 
-void ofxTALifxClient::bon(bulb_vector bulbs, float H, float S, float B) {
-    for (auto& b : bulbs) {
-        b.SetColor(H,S,B);
+void ofxTALifxClient::On(const bulb_vector bulbs, const float H, const float S, const float B) {
+    for (auto &b : bulbs) {
+        b->SetColor(H, S, B);
+    }
+}
+
+/*
+ * Power bulbs off or on
+ */
+
+void ofxTALifxClient::powerOff(const string target) {
+    lock();
+    powerOff(targetedBulbs(target));
+    unlock();
+}
+
+void ofxTALifxClient::powerOff(const bulb_vector bulbs) {
+    for (auto &b : bulbs) {
+        b->SetPower(0);
+    }
+}
+
+void ofxTALifxClient::powerOn(const string target) {
+    lock();
+    powerOn(targetedBulbs(target));
+    unlock();
+}
+
+void ofxTALifxClient::powerOn(const bulb_vector bulbs) {
+    for (auto &b : bulbs) {
+        b->SetPower(65535);
     }
 }
