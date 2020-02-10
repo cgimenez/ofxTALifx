@@ -10,7 +10,7 @@ A short demo is available here : https://www.youtube.com/watch?v=M22dPxR8DL8
 
 **Disclaimer**
 
-The source code is provided as-is, it is designed as quick-n-dirty tool intended to be used within a specific environment that might not fit your bill. The code have never been used or even compiled on Linux or Windows.
+The source code is provided as-is, it is designed as quick-n-dirty tool intended to be used within a specific environment that might not fit your bill. The code have never been used or even compiled on Linux or Windows (OSX only).
 
 **Requirements**
 
@@ -48,4 +48,4 @@ Have fun ! ;-)
 
 *(C) 2016/2017 Christophe Gimenez for TACTIF Compagnie / Bordeaux - France*
 
-*Lifx messages protocol adapted from Andrew Kane lifx lib https://github.com/codemaster/lib-lifx*
+*Lifx messages protocol structures adapted from Andrew Kane lifx lib https://github.com/codemaster/lib-lifx*
